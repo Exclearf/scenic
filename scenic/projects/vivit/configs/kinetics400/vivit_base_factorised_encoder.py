@@ -97,12 +97,12 @@ def get_config():
   config.model.temporal_transformer = ml_collections.ConfigDict()
   config.model.temporal_transformer.num_heads = 12
   config.model.temporal_transformer.mlp_dim = 3072
-  config.model.temporal_transformer.num_layers = 4
+  config.model.temporal_transformer.num_layers = 12
   config.model.representation_size = None
   config.model.classifier = 'token'
   config.model.attention_dropout_rate = 0.
   config.model.dropout_rate = 0.
-  config.model_dtype_str = 'float32'
+  config.model_dtype_str = 'bfloat16'
   config.model.temporal_encoding_config = ml_collections.ConfigDict()
   config.model.temporal_encoding_config.method = '3d_conv'
   config.model.patches.size = (16, 16, 2)
