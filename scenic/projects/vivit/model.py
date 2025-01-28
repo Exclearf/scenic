@@ -34,6 +34,7 @@ from scenic.model_lib.layers import attention_layers
 from scenic.model_lib.layers import nn_layers
 from scenic.projects.baselines import vit
 from scenic.projects.vivit import model_utils
+from scenic.projects.token_learner.model import TokenLearnerModuleV11
 
 Initializer = Callable[[jnp.ndarray, Sequence[int], jnp.dtype], jnp.ndarray]
 
@@ -496,7 +497,7 @@ class ViViT(nn.Module):
   classifier: str = 'gap'
   return_prelogits: bool = False
   return_preclassifier: bool = False
-  dtype: jnp.dtype = jnp.float32
+  dtype: jnp.dtype = jnp.bfloat16
 
   @nn.compact
   def __call__(self, x: jnp.ndarray, *, train: bool, debug: bool = False):
@@ -525,15 +526,35 @@ class ViViT(nn.Module):
     x = Encoder(
         temporal_dims=temporal_dims,
         mlp_dim=self.mlp_dim,
-        num_layers=self.num_layers,
+        num_layers=6,
         num_heads=self.num_heads,
         attention_config=self.attention_config,
         dropout_rate=self.dropout_rate,
         attention_dropout_rate=self.attention_dropout_rate,
         stochastic_droplayer_rate=self.stochastic_droplayer_rate,
         dtype=self.dtype,
-        name='Transformer')(
-            x, train=train)
+        name='Transformer_0'
+        )(x, train=train)
+
+    x = TokenLearnerModuleV11(
+                num_tokens=16,
+                dropout_rate=self.dropout_rate,
+    )(x, deterministic=not train)
+
+    x = Encoder(
+        temporal_dims=temporal_dims,
+        mlp_dim=self.mlp_dim,
+        num_layers=6,
+        num_heads=self.num_heads,
+        attention_config=self.attention_config,
+        dropout_rate=self.dropout_rate,
+        attention_dropout_rate=self.attention_dropout_rate,
+        stochastic_droplayer_rate=self.stochastic_droplayer_rate,
+        positional_embedding='none',
+        dtype=self.dtype,
+        name='Transformer_1'
+        )(x, train=train)
+    
 
     if self.return_preclassifier:
       return x
@@ -581,7 +602,10 @@ class SpaceTimeViViT(nn.Module):
   classifier: str = 'gap'
   return_prelogits: bool = False
   dtype: jnp.dtype = jnp.float32
-
+  use_token_learner: bool = False
+  num_layers_before_tl: int = 6
+  token_learner_num_tokens: int = 16
+  
   @nn.compact
   def __call__(self, x: jnp.ndarray, *, train: bool, debug: bool = False):
 
@@ -593,16 +617,16 @@ class SpaceTimeViViT(nn.Module):
     x = x.reshape(bs, t, h * w, c)
 
     def vit_body(x, mlp_dim, num_layers, num_heads, encoder_name='Transformer'):
-      # If we want to add a class token, add it here.
-      if self.classifier in ['token']:
+      if True:
         n, _, c = x.shape
         cls = self.param(f'cls_{encoder_name}', nn.initializers.zeros,
                          (1, 1, c), x.dtype)
         cls = jnp.tile(cls, [n, 1, 1])
         x = jnp.concatenate([cls, x], axis=1)
 
+
       x = Encoder(
-          temporal_dims=None,  # This is unused for Factorised-Encoder
+          temporal_dims=None,
           mlp_dim=mlp_dim,
           num_layers=num_layers,
           num_heads=num_heads,
@@ -613,53 +637,32 @@ class SpaceTimeViViT(nn.Module):
           dtype=self.dtype,
           name=encoder_name)(x, train=train)
 
-      if self.classifier in ['token', '0']:
+      if True:
         x = x[:, 0]
-      elif self.classifier in ('gap', 'gmp', 'gsp'):
-        fn = {'gap': jnp.mean, 'gmp': jnp.max, 'gsp': jnp.sum}[self.classifier]
-        x = fn(x, axis=list(range(1, x.ndim - 1)))
       return x
 
-    # run attention across spacec, per frame
     x = jax.vmap(
         functools.partial(
             vit_body,
             mlp_dim=self.spatial_mlp_dim,
             num_layers=self.spatial_num_layers,
             num_heads=self.spatial_num_heads,
-            encoder_name='SpatialTransformer'),
+            encoder_name='SpatialTransformer',
+            ),
         in_axes=1,
         out_axes=1,
         axis_name='time')(
             x)
-    assert x.ndim == 3 and x.shape[:2] == (bs, t)
 
-    # run attention across time, over all frames
-    if not self.attention_config.get('spatial_only_baseline', False):
-      x = vit_body(
+    x = vit_body(
           x,
           mlp_dim=self.temporal_mlp_dim,
           num_layers=self.temporal_num_layers,
           num_heads=self.temporal_num_heads,
-          encoder_name='TemporalTransformer')
-    else:
-      # Do global average pooling instead, as method of combining temporal info.
-      x = jnp.mean(x, axis=list(range(1, x.ndim - 1)))
+          encoder_name='TemporalTransformer',
+        )
 
-    if self.representation_size is not None:
-      x = nn.Dense(self.representation_size, name='pre_logits')(x)
-      x = nn.tanh(x)
-    else:
-      x = nn_layers.IdentityLayer(name='pre_logits')(x)
-
-    if self.return_prelogits:
-      return x
-    else:
-      x = nn.Dense(
-          self.num_classes,
-          kernel_init=nn.initializers.zeros,
-          name='output_projection')(x)
-      return x
+    return x
 
 
 class ViViTClassificationModel(ClassificationModel):
