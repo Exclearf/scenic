@@ -102,7 +102,7 @@ def get_config():
   config.model.classifier = 'token'
   config.model.attention_dropout_rate = 0.
   config.model.dropout_rate = 0.
-  config.model_dtype_str = 'float32'
+  config.model_dtype_str = 'bfloat16'
   config.model.temporal_encoding_config = ml_collections.ConfigDict()
   config.model.temporal_encoding_config.method = '3d_conv'
   config.model.patches.size = (16, 16, 2)

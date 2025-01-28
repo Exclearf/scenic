@@ -283,7 +283,7 @@ class EncoderMod(nn.Module):
   num_tokens: int = 8
   tokenlearner_loc: int = 12
   use_v11: bool = True
-  dtype: Any = jnp.float32
+  dtype: Any = jnp.bfloat16
 
   @nn.compact
   def __call__(self, inputs: jnp.ndarray, *, train: bool = False):
