@@ -629,6 +629,8 @@ class SpaceTimeViViT(nn.Module):
           dtype=self.dtype,
           name=encoder_name)(x, train=train)
 
+      x = jnp.mean(x, axis=list(range(1, x.ndim - 1)))
+            #x = jnp.mean(x, axis=1)
       return x 
 
     x = jax.vmap(
@@ -644,12 +646,12 @@ class SpaceTimeViViT(nn.Module):
         axis_name='time')(
             x)
 
-    x = jax.vmap(lambda frame: TokenLearnerModuleV11(
-                num_tokens=1,
-                dropout_rate=self.dropout_rate,
-                )(frame, deterministic=not train),
-                in_axes=1, out_axes=1)(x)
-    x = x.reshape(x.shape[0], -1, self.hidden_size)
+        #x = jax.vmap(lambda frame: TokenLearnerModuleV11(
+        #        num_tokens=8,
+        #        dropout_rate=self.dropout_rate,
+        #        )(frame, deterministic=not train),
+        #        in_axes=1, out_axes=1)(x)
+        #x = x.reshape(x.shape[0], -1, self.hidden_size)
 
     x = vit_body(
           x,
